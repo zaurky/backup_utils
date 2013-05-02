@@ -16,6 +16,8 @@ fi
 awk=`which awk`
 cat=`which cat`
 date=`which date`
+du=`which du`
+find=`which find`
 grep=`which grep`
 hostname=`which hostname`
 install=`which install`
@@ -25,6 +27,7 @@ sed=`which sed`
 sort=`which sort`
 tar=`which tar`
 TAR_ATTR='cvzf'
+wc=`which wc`
 
 
 # setting variables
@@ -47,13 +50,13 @@ fi
 
 
 # checking if backup is needed/wanted
-if [ "x`mount | grep $DESTINATION`" == "x" ]; then
-    echo "backup disk is not here"
+if [ "x$MOUNTEDDEST" == "x1" ] && [ "x`mount | $grep $DESTINATION`" == "x" ]; then
+    echo "MOUNTEDDEST set : backup disk is not here"
     exit
 fi
 
-if [ "x$OLDDATE" == "x$NOW" ]; then
-    echo "run the same day"
+if [ "x$ONCEPERDAY" == "x1" ] && [ "x$OLDDATE" == "x$NOW" ]; then
+    echo "ONCEPERDAY set : already run the same day"
     exit
 fi
 
@@ -119,10 +122,10 @@ for SOURCE in $SOURCES; do
 done
 
 ## if history is empty, remove it
-if [ `du -sh "$HIST" | awk '{print $1}'` == '4,0K' ]; then
+if [ `$du -sh "$HIST" | $awk '{print $1}'` == '4,0K' ]; then
     $rm -fr "$HIST"
 ## if no files in history, remove it
-elif [ `find "$HIST" -type f | wc -l` -eq 0 ]; then
+elif [ `$find "$HIST" -type f | $wc -l` -eq 0 ]; then
     $rm -fr "$HIST"
 ## otherwise tar it
 else
@@ -131,7 +134,7 @@ else
 fi
 
 ## if logs are empty, remove them
-if [ `du -sh "$LOGS" | awk '{print $1}'` == '4,0K' ]; then
+if [ `$du -sh "$LOGS" | $awk '{print $1}'` == '4,0K' ]; then
     $rm -fr "$LOGS"
 fi
 
