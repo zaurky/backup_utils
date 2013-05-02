@@ -11,13 +11,14 @@ fi
 
 
 # getting binary paths
-CAT=`which cat`
-SED=`which sed`
-DATE=`which date`
 AWK=`which awk`
-RSYNC=`which rsync`
-RM=`rm`
+CAT=`which cat`
+DATE=`which date`
 GREP=`grep`
+INSTALL=`which install`
+RM=`rm`
+RSYNC=`which rsync`
+SED=`which sed`
 SORT=`sort`
 TAR=`which tar`
 TAR_ATTR='cvzf'
@@ -58,14 +59,15 @@ echo $NOW > "$DATEFILE"
 
 
 # creating dirs
-install --directory "$HIST"
-install --directory "$BACKUP"
-install --directory "$LOGS"
-install --directory "$TMP"
-install --directory "$DESTINATION"
+$INSTALL --directory "$HIST"
+$INSTALL --directory "$BACKUP"
+$INSTALL --directory "$LOGS"
+$INSTALL --directory "$TMP"
+$INSTALL --directory "$DESTINATION"
 
 
 # start to work
+## put what have moved in a temporary file
 for SOURCE in $FROM; do
     $RSYNC --dry-run --itemize-changes --out-format="%i|%n|" --relative \
         --recursive --update --delete --perms --owner --group --times --links \
@@ -73,47 +75,60 @@ for SOURCE in $FROM; do
 	"$SOURCE" "$BACKUP" | sed '/^ *$/d' >> "$LOGS/dryrun"
 done
 
+## get all files
 $GREP "^.f" "$LOGS/dryrun" >> "$LOGS/onlyfiles"
 
+## get new files
 $GREP "^.f+++++++++" "$LOGS/onlyfiles" \
     | $AWK -F '|' '{print $2 }' | sed 's@^/@@' >> "$LOGS/created"
 
-$GREP --invert-match "^.f+++++++++" "$LOGS/onlyfiles" \
-    | $AWK -F '|' '{print $2 }' | sed 's@^/@@' >> "$LOGS/changed"
-
-$GREP "^\.d" "$LOGS/dryrun" | $AWK -F '|' '{print $2 }' \
-    | $SED -e 's@^/@@' -e 's@/$@@' >> "$LOGS/changed"
-
+## get created directories
 $GREP "^cd" "$LOGS/dryrun" | $AWK -F '|' '{print $2 }' \
     | $SED -e 's@^/@@' -e 's@/$@@' >> "$LOGS/created"
 
+## get modified files
+$GREP --invert-match "^.f+++++++++" "$LOGS/onlyfiles" \
+    | $AWK -F '|' '{print $2 }' | sed 's@^/@@' >> "$LOGS/changed"
+
+## get modified directories
+$GREP "^\.d" "$LOGS/dryrun" | $AWK -F '|' '{print $2 }' \
+    | $SED -e 's@^/@@' -e 's@/$@@' >> "$LOGS/changed"
+
+## get deleted files and directories
 $GREP "^*deleting" "$LOGS/dryrun" \
     | $AWK -F '|' '{print $2 }' >> "$LOGS/deleted"
 
+## make a list of files and directories to move to history (deleted and updated one)
 $CAT "$LOGS/deleted" > "$TMP/tmp.rsync.list"
 $CAT "$LOGS/changed" >> "$TMP/tmp.rsync.list"
 $SORT --output="$TMP/rsync.list" --unique "$TMP/tmp.rsync.list"
 
+## put files in history
 if [ -s "$TMP/rsync.list" ]; then
     $RSYNC --relative --update --perms --owner --group --times --links --super \
-        --files-from="$TMP/rsync.list" "$backup" "$HIST"
+        --files-from="$TMP/rsync.list" "$BACKUP" "$HIST"
 fi
 
+## get files from source
 for SOURCE in $FROM; do
     $RSYNC --relative --recursive --update --delete --perms --owner --group --times \
         --links --safe-links --super --one-file-system --devices ${EXCLUDE} \
 	"$SOURCE" "$BACKUP"
 done
 
+## if history is empty, remove it
 if [ `du -sh "$HIST" | awk '{print $1}'` == '4,0K' ]; then
-    rm -fr "$HIST"
+    $RM -fr "$HIST"
+## if no files in history, remove it
 elif [ `find "$HIST" -type f | wc -l` -eq 0 ]; then
-    rm -fr "$HIST"
+    $RM -fr "$HIST"
+## otherwise tar it
 else
     $TAR $TAR_ATTR "${HIST}.tgz" "$HIST" > "${HIST}.log"
-    rm -fr "$HIST"
+    $RM -fr "$HIST"
 fi
 
+## if logs are empty, remove them
 if [ `du -sh "$LOGS" | awk '{print $1}'` == '4,0K' ]; then
-    rm -fr "$LOGS"
+    $RM -fr "$LOGS"
 fi
