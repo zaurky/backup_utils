@@ -11,31 +11,33 @@ fi
 
 
 # getting binary paths
-AWK=`which awk`
-CAT=`which cat`
-DATE=`which date`
-GREP=`grep`
-INSTALL=`which install`
-RM=`rm`
-RSYNC=`which rsync`
-SED=`which sed`
-SORT=`sort`
-TAR=`which tar`
+awk=`which awk`
+cat=`which cat`
+date=`which date`
+grep=`which grep`
+hostname=`which hostname`
+install=`which install`
+rm=`which rm`
+rsync=`which rsync`
+sed=`which sed`
+sort=`which sort`
+tar=`which tar`
 TAR_ATTR='cvzf'
 
 
 # setting variables
-TIMESTAMP=$($DATE "+%Y/%m/%d/%H:%M:%S")
+TIMESTAMP=$($date "+%Y/%m/%d/%H:%M:%S")
 
+HOSTNAME=`$hostname`
 HIST="$DESTINATION/$HOSTNAME/history/$TIMESTAMP"
 BACKUP="$DESTINATION/$HOSTNAME/backup/"
 LOGS="$DESTINATION/$HOSTNAME/log/$TIMESTAMP"
 
 TMP="/tmp/backup"
 
-DATEFILE="$DATEFILE.$HOSTNAME"
-NOW=`$DATE +%Y%m%d`
-OLDDATE=`$CAT "$DATEFILE"`
+DATEFILE="$DESTINATION/timestamp.$HOSTNAME"
+NOW=`$date +%Y%m%d`
+OLDDATE=`$cat "$DATEFILE"`
 
 EXCLUDEFILE="/etc/backup/exclude"
 EXCLUDE=''
@@ -59,76 +61,76 @@ echo $NOW > "$DATEFILE"
 
 
 # creating dirs
-$INSTALL --directory "$HIST"
-$INSTALL --directory "$BACKUP"
-$INSTALL --directory "$LOGS"
-$INSTALL --directory "$TMP"
-$INSTALL --directory "$DESTINATION"
+$install --directory "$HIST"
+$install --directory "$BACKUP"
+$install --directory "$LOGS"
+$install --directory "$TMP"
+$install --directory "$DESTINATION"
 
 
 # start to work
 ## put what have moved in a temporary file
-for SOURCE in $FROM; do
-    $RSYNC --dry-run --itemize-changes --out-format="%i|%n|" --relative \
+for SOURCE in $SOURCES; do
+    $rsync --dry-run --itemize-changes --out-format="%i|%n|" --relative \
         --recursive --update --delete --perms --owner --group --times --links \
         --safe-links --super --one-file-system --devices ${EXCLUDE} \
 	"$SOURCE" "$BACKUP" | sed '/^ *$/d' >> "$LOGS/dryrun"
 done
 
 ## get all files
-$GREP "^.f" "$LOGS/dryrun" >> "$LOGS/onlyfiles"
+$grep "^.f" "$LOGS/dryrun" >> "$LOGS/onlyfiles"
 
 ## get new files
-$GREP "^.f+++++++++" "$LOGS/onlyfiles" \
-    | $AWK -F '|' '{print $2 }' | sed 's@^/@@' >> "$LOGS/created"
+$grep "^.f+++++++++" "$LOGS/onlyfiles" \
+    | $awk -F '|' '{print $2 }' | sed 's@^/@@' >> "$LOGS/created"
 
 ## get created directories
-$GREP "^cd" "$LOGS/dryrun" | $AWK -F '|' '{print $2 }' \
-    | $SED -e 's@^/@@' -e 's@/$@@' >> "$LOGS/created"
+$grep "^cd" "$LOGS/dryrun" | $awk -F '|' '{print $2 }' \
+    | $sed -e 's@^/@@' -e 's@/$@@' >> "$LOGS/created"
 
 ## get modified files
-$GREP --invert-match "^.f+++++++++" "$LOGS/onlyfiles" \
-    | $AWK -F '|' '{print $2 }' | sed 's@^/@@' >> "$LOGS/changed"
+$grep --invert-match "^.f+++++++++" "$LOGS/onlyfiles" \
+    | $awk -F '|' '{print $2 }' | sed 's@^/@@' >> "$LOGS/changed"
 
 ## get modified directories
-$GREP "^\.d" "$LOGS/dryrun" | $AWK -F '|' '{print $2 }' \
-    | $SED -e 's@^/@@' -e 's@/$@@' >> "$LOGS/changed"
+$grep "^\.d" "$LOGS/dryrun" | $awk -F '|' '{print $2 }' \
+    | $sed -e 's@^/@@' -e 's@/$@@' >> "$LOGS/changed"
 
 ## get deleted files and directories
-$GREP "^*deleting" "$LOGS/dryrun" \
-    | $AWK -F '|' '{print $2 }' >> "$LOGS/deleted"
+$grep "^*deleting" "$LOGS/dryrun" \
+    | $awk -F '|' '{print $2 }' >> "$LOGS/deleted"
 
 ## make a list of files and directories to move to history (deleted and updated one)
-$CAT "$LOGS/deleted" > "$TMP/tmp.rsync.list"
-$CAT "$LOGS/changed" >> "$TMP/tmp.rsync.list"
-$SORT --output="$TMP/rsync.list" --unique "$TMP/tmp.rsync.list"
+$cat "$LOGS/deleted" > "$TMP/tmp.rsync.list"
+$cat "$LOGS/changed" >> "$TMP/tmp.rsync.list"
+$sort --output="$TMP/rsync.list" --unique "$TMP/tmp.rsync.list"
 
 ## put files in history
 if [ -s "$TMP/rsync.list" ]; then
-    $RSYNC --relative --update --perms --owner --group --times --links --super \
+    $rsync --relative --update --perms --owner --group --times --links --super \
         --files-from="$TMP/rsync.list" "$BACKUP" "$HIST"
 fi
 
 ## get files from source
-for SOURCE in $FROM; do
-    $RSYNC --relative --recursive --update --delete --perms --owner --group --times \
+for SOURCE in $SOURCES; do
+    $rsync --relative --recursive --update --delete --perms --owner --group --times \
         --links --safe-links --super --one-file-system --devices ${EXCLUDE} \
 	"$SOURCE" "$BACKUP"
 done
 
 ## if history is empty, remove it
 if [ `du -sh "$HIST" | awk '{print $1}'` == '4,0K' ]; then
-    $RM -fr "$HIST"
+    $rm -fr "$HIST"
 ## if no files in history, remove it
 elif [ `find "$HIST" -type f | wc -l` -eq 0 ]; then
-    $RM -fr "$HIST"
+    $rm -fr "$HIST"
 ## otherwise tar it
 else
-    $TAR $TAR_ATTR "${HIST}.tgz" "$HIST" > "${HIST}.log"
-    $RM -fr "$HIST"
+    $tar $TAR_ATTR "${HIST}.tgz" "$HIST" > "${HIST}.log"
+    $rm -fr "$HIST"
 fi
 
 ## if logs are empty, remove them
 if [ `du -sh "$LOGS" | awk '{print $1}'` == '4,0K' ]; then
-    $RM -fr "$LOGS"
+    $rm -fr "$LOGS"
 fi
