@@ -1,12 +1,14 @@
 #!/bin/bash
 
-CONFFILE=/etc/backup/backup.conf
+CONFDIR="/etc/backup"
+CONFFILE="$CONFDIR/backup.conf"
+EXCLUDEFILE="$CONFDIR/exclude"
 
 
 # getting config parameters
 source $CONFFILE
 if [ -s "$HOME/.backup" ]; then
-    source $HOME/.backup
+    source "$HOME/.backup"
 fi
 
 
@@ -32,14 +34,12 @@ HOSTNAME=`$hostname`
 HIST="$DESTINATION/$HOSTNAME/history/$TIMESTAMP"
 BACKUP="$DESTINATION/$HOSTNAME/backup/"
 LOGS="$DESTINATION/$HOSTNAME/log/$TIMESTAMP"
-
-TMP="/tmp/backup"
+TMP="$DESTINATION/$HOSTNAME/tmp"
 
 DATEFILE="$DESTINATION/timestamp.$HOSTNAME"
 NOW=`$date +%Y%m%d`
 OLDDATE=`$cat "$DATEFILE"`
 
-EXCLUDEFILE="/etc/backup/exclude"
 EXCLUDE=''
 if [ -s "$EXCLUDEFILE" ]; then
     EXCLUDE="--exclude-from=$EXCLUDEFILE"
@@ -74,7 +74,7 @@ for SOURCE in $SOURCES; do
     $rsync --dry-run --itemize-changes --out-format="%i|%n|" --relative \
         --recursive --update --delete --perms --owner --group --times --links \
         --safe-links --super --one-file-system --devices ${EXCLUDE} \
-	"$SOURCE" "$BACKUP" | sed '/^ *$/d' >> "$LOGS/dryrun"
+    	"$SOURCE" "$BACKUP" | sed '/^ *$/d' >> "$LOGS/dryrun"
 done
 
 ## get all files
@@ -115,7 +115,7 @@ fi
 for SOURCE in $SOURCES; do
     $rsync --relative --recursive --update --delete --perms --owner --group --times \
         --links --safe-links --super --one-file-system --devices ${EXCLUDE} \
-	"$SOURCE" "$BACKUP"
+	    "$SOURCE" "$BACKUP"
 done
 
 ## if history is empty, remove it
@@ -134,3 +134,6 @@ fi
 if [ `du -sh "$LOGS" | awk '{print $1}'` == '4,0K' ]; then
     $rm -fr "$LOGS"
 fi
+
+## clean
+$rm -rf "$TMP"
