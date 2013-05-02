@@ -1,2 +1,0 @@
-FROM="/etc /home/zaurky"
-EXCEPT="/home/zaurky/Musique/"
