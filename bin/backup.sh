@@ -1,90 +1,119 @@
 #!/bin/bash
 
-source /etc/backup.conf
-source $HOME/.backup
+CONFFILE=/etc/backup/backup.conf
 
+
+# getting config parameters
+source $CONFFILE
+if [ -s "$HOME/.backup" ]; then
+    source $HOME/.backup
+fi
+
+
+# getting binary paths
+CAT=`which cat`
+SED=`which sed`
+DATE=`which date`
+AWK=`which awk`
+RSYNC=`which rsync`
+RM=`rm`
+GREP=`grep`
+SORT=`sort`
+TAR=`which tar`
+TAR_ATTR='cvzf'
+
+
+# setting variables
+TIMESTAMP=$($DATE "+%Y/%m/%d/%H:%M:%S")
+
+HIST="$DESTINATION/$HOSTNAME/history/$TIMESTAMP"
+BACKUP="$DESTINATION/$HOSTNAME/backup/"
+LOGS="$DESTINATION/$HOSTNAME/log/$TIMESTAMP"
+
+TMP="/tmp/backup"
+
+DATEFILE="$DATEFILE.$HOSTNAME"
+NOW=`$DATE +%Y%m%d`
+OLDDATE=`$CAT "$DATEFILE"`
+
+EXCLUDEFILE="/etc/backup/exclude"
+EXCLUDE=''
+if [ -s "$EXCLUDEFILE" ]; then
+    EXCLUDE="--exclude-from=$EXCLUDEFILE"
+fi
+
+
+# checking if backup is needed/wanted
 if [ "x`mount | grep $DESTINATION`" == "x" ]; then
     echo "backup disk is not here"
     exit
 fi
 
-DATEFILE="$DATEFILE.$HOSTNAME"
-DATE=`date +%Y%m%d`
-OLDDATE=`cat "$DATEFILE"`
-
-if [ "x$OLDDATE" == "x$DATE" ]; then
+if [ "x$OLDDATE" == "x$NOW" ]; then
     echo "run the same day"
     exit
 fi
 
-echo $DATE > "$DATEFILE"
+echo $NOW > "$DATEFILE"
 
-dest="$DESTINATION"
-mkdir -p "$dest"
 
-EXCLUDE=''
-if [ -s "$HOME/.backup.exclude" ]; then
-    EXCLUDE="--exclude-from=$HOME/.backup.exclude"
-fi
+# creating dirs
+install --directory "$HIST"
+install --directory "$BACKUP"
+install --directory "$LOGS"
+install --directory "$TMP"
+install --directory "$DESTINATION"
 
-timestamp=$(date "+%Y/%m/%d/%H:%M:%S")
 
-hist="$dest/$HOSTNAME/history/$timestamp"
-backup="$dest/$HOSTNAME/backup/"
-logs="$dest/$HOSTNAME/log/$timestamp"
-
-install --directory "$hist"
-install --directory "$backup"
-install --directory "$logs"
-
-for from in $FROM; do
-    rsync --dry-run --itemize-changes --out-format="%i|%n|" --relative \
+# start to work
+for SOURCE in $FROM; do
+    $RSYNC --dry-run --itemize-changes --out-format="%i|%n|" --relative \
         --recursive --update --delete --perms --owner --group --times --links \
         --safe-links --super --one-file-system --devices ${EXCLUDE} \
-	"$from" "$backup" | sed '/^ *$/d' >> "$logs/dryrun"
+	"$SOURCE" "$BACKUP" | sed '/^ *$/d' >> "$LOGS/dryrun"
 done
 
-grep "^.f" "$logs/dryrun" >> "$logs/onlyfiles"
+$GREP "^.f" "$LOGS/dryrun" >> "$LOGS/onlyfiles"
 
-grep "^.f+++++++++" "$logs/onlyfiles" \
-    | awk -F '|' '{print $2 }' | sed 's@^/@@' >> "$logs/created"
+$GREP "^.f+++++++++" "$LOGS/onlyfiles" \
+    | $AWK -F '|' '{print $2 }' | sed 's@^/@@' >> "$LOGS/created"
 
-grep --invert-match "^.f+++++++++" "$logs/onlyfiles" \
-    | awk -F '|' '{print $2 }' | sed 's@^/@@' >> "$logs/changed"
+$GREP --invert-match "^.f+++++++++" "$LOGS/onlyfiles" \
+    | $AWK -F '|' '{print $2 }' | sed 's@^/@@' >> "$LOGS/changed"
 
-grep "^\.d" "$logs/dryrun" | awk -F '|' '{print $2 }' \
-    | sed -e 's@^/@@' -e 's@/$@@' >> "$logs/changed"
+$GREP "^\.d" "$LOGS/dryrun" | $AWK -F '|' '{print $2 }' \
+    | $SED -e 's@^/@@' -e 's@/$@@' >> "$LOGS/changed"
 
-grep "^cd" "$logs/dryrun" | awk -F '|' '{print $2 }' \
-    | sed -e 's@^/@@' -e 's@/$@@' >> "$logs/created"
+$GREP "^cd" "$LOGS/dryrun" | $AWK -F '|' '{print $2 }' \
+    | $SED -e 's@^/@@' -e 's@/$@@' >> "$LOGS/created"
 
-grep "^*deleting" "$logs/dryrun" \
-    | awk -F '|' '{print $2 }' >> "$logs/deleted"
+$GREP "^*deleting" "$LOGS/dryrun" \
+    | $AWK -F '|' '{print $2 }' >> "$LOGS/deleted"
 
-cat "$logs/deleted" > /tmp/tmp.rsync.list
-cat "$logs/changed" >> /tmp/tmp.rsync.list
-sort --output=/tmp/rsync.list --unique /tmp/tmp.rsync.list
+$CAT "$LOGS/deleted" > "$TMP/tmp.rsync.list"
+$CAT "$LOGS/changed" >> "$TMP/tmp.rsync.list"
+$SORT --output="$TMP/rsync.list" --unique "$TMP/tmp.rsync.list"
 
-if [ -s "/tmp/rsync.list" ]; then
-    rsync --relative --update --perms --owner --group --times --links --super \
-        --files-from=/tmp/rsync.list "$backup" "$hist"
+if [ -s "$TMP/rsync.list" ]; then
+    $RSYNC --relative --update --perms --owner --group --times --links --super \
+        --files-from="$TMP/rsync.list" "$backup" "$HIST"
 fi
 
-for from in $FROM; do
-    rsync --relative --recursive --update --delete --perms --owner --group --times \
+for SOURCE in $FROM; do
+    $RSYNC --relative --recursive --update --delete --perms --owner --group --times \
         --links --safe-links --super --one-file-system --devices ${EXCLUDE} \
-	"$from" "$backup"
+	"$SOURCE" "$BACKUP"
 done
 
-if [ `du -sh "$hist" | awk '{print $1}'` == '4,0K' ]; then
-    rm -fr "$hist"
-elif [ `find "$hist" -type f | wc -l` -eq 0 ]; then
-    rm -fr "$hist"
+if [ `du -sh "$HIST" | awk '{print $1}'` == '4,0K' ]; then
+    rm -fr "$HIST"
+elif [ `find "$HIST" -type f | wc -l` -eq 0 ]; then
+    rm -fr "$HIST"
 else
-    tar cvzf "${hist}.tgz" "$hist" > "${hist}.log"
-    rm -fr "$hist"
+    $TAR $TAR_ATTR "${HIST}.tgz" "$HIST" > "${HIST}.log"
+    rm -fr "$HIST"
 fi
 
-if [ `du -sh "$logs" | awk '{print $1}'` == '4,0K' ]; then
-    rm -fr "$logs"
+if [ `du -sh "$LOGS" | awk '{print $1}'` == '4,0K' ]; then
+    rm -fr "$LOGS"
 fi
